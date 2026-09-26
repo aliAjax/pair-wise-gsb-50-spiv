@@ -3,31 +3,344 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>税务稽查案件与复议流程</title>
+  <title>税务稽查办理台</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #17212b; }
-    main { max-width: 960px; margin: auto; }
-    button { padding: .55rem .9rem; cursor: pointer; }
-    pre { background: #f4f6f8; padding: 1rem; overflow: auto; border-radius: 8px; }
-    .row { display: flex; gap: 1rem; align-items: center; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #17212b; background: #f7f8fa; }
+    main { max-width: 1100px; margin: auto; padding: 1.5rem 1rem 4rem; }
+    h1 { font-size: 1.4rem; margin-bottom: .3rem; }
+    h2 { font-size: 1.02rem; margin: 0 0 .6rem; }
+    h3 { font-size: .88rem; margin: .8rem 0 .3rem; }
+    section { background: #fff; border: 1px solid #e3e7ec; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+    label { display: block; font-size: .78rem; color: #5b6b7b; margin: .45rem 0 .15rem; }
+    input, select { padding: .4rem .5rem; border: 1px solid #c9d2db; border-radius: 6px; font-size: .88rem; width: 100%; box-sizing: border-box; }
+    button { padding: .48rem .85rem; cursor: pointer; border: 1px solid #1f6feb; background: #1f6feb; color: #fff; border-radius: 6px; font-size: .85rem; }
+    button.ghost { background: #fff; color: #1f6feb; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .6rem 1rem; }
+    .row { display: flex; gap: .7rem; align-items: end; flex-wrap: wrap; }
+    .muted { color: #6b7a89; font-size: .82rem; }
+    .badge { display: inline-block; padding: .12rem .55rem; border-radius: 999px; font-size: .74rem; background: #eef2f6; margin: 0 .3rem .2rem 0; }
+    .badge.ok { background: #e3f4e5; color: #1a7f37; }
+    .badge.warn { background: #fdeeee; color: #b62324; }
+    .badge.info { background: #e7effc; color: #1f6feb; }
+    table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+    th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid #edf0f3; vertical-align: top; }
+    tr[data-id] { cursor: pointer; }
+    tr[data-id]:hover { background: #f2f7ff; }
+    pre { background: #f4f6f8; padding: .8rem; overflow: auto; border-radius: 8px; font-size: .78rem; }
+    .forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+    fieldset { border: 1px solid #e3e7ec; border-radius: 8px; margin: 0; padding: .7rem .9rem .9rem; }
+    legend { font-size: .84rem; font-weight: 600; padding: 0 .3rem; }
+    ul.plain { margin: .3rem 0; padding-left: 1.1rem; font-size: .85rem; }
+    #message { min-height: 1.3rem; font-size: .86rem; margin: .6rem 0 0; }
+    #message.error { color: #b62324; }
+    #message.ok { color: #1a7f37; }
   </style>
 </head>
 <body>
 <main>
-  <h1>税务稽查案件与复议流程</h1>
-  <p>最小演示页。完整业务流程通过README中的JSON接口调用。</p>
-  <div class="row"><button id="load">加载记录</button><button id="stats">查看状态统计</button></div>
-  <pre id="output">点击上方按钮读取服务状态。</pre>
+  <h1>税务稽查办理台</h1>
+  <p class="muted">补税和处罚建议发出后，陈述申辩、听证申请与补交证据统一在办理台登记；逾期申请只留记录并注明不受理。听证未办结或新证据改变金额时，复核不能确认原决定，须重新核对并写入决定依据。数据保存在 SQLite，服务重开后仍可查看。</p>
+
+  <section>
+    <h2>调用身份</h2>
+    <div class="row">
+      <div style="min-width:160px"><label>用户</label><input id="uid" value="demo-admin"></div>
+      <div style="min-width:220px"><label>角色</label>
+        <select id="role">
+          <option value="admin">admin（全部权限）</option>
+          <option value="inspector">inspector（稽查人员）</option>
+          <option value="reviewer">reviewer（复核人员）</option>
+          <option value="taxpayer_rep">taxpayer_rep（纳税人代表）</option>
+        </select>
+      </div>
+      <div style="min-width:120px"><label>机构</label><input id="org" value="demo"></div>
+      <div><button id="reload" type="button" class="ghost">刷新案件列表</button></div>
+    </div>
+    <p id="message"></p>
+  </section>
+
+  <section>
+    <h2>案件列表</h2>
+    <div id="records"><p class="muted">点击“刷新案件列表”加载。</p></div>
+  </section>
+
+  <section>
+    <h2>新建案件</h2>
+    <div class="grid">
+      <div><label>reference</label><input id="c_reference" value="TAX-26001"></div>
+      <div><label>纳税人</label><input id="c_taxpayer" value="Star Ltd"></div>
+      <div><label>税期</label><input id="c_tax_period" value="2025-Q4"></div>
+      <div><label>申报税额</label><input id="c_declared_tax" type="number" value="500000"></div>
+      <div><label>核定税额</label><input id="c_assessed_tax" type="number" value="760000"></div>
+      <div><label>处罚比例（0~1）</label><input id="c_penalty_rate" type="number" step="0.01" value="0.2"></div>
+      <div><label>证据份数</label><input id="c_evidence_count" type="number" value="4"></div>
+      <div><label>逾期天数</label><input id="c_days_late" type="number" value="90"></div>
+      <div><label>复议期限（天）</label><input id="c_appeal_deadline_day" type="number" value="60"></div>
+    </div>
+    <p><button id="create" type="button">创建案件</button></p>
+  </section>
+
+  <section id="desk" style="display:none">
+    <h2>办理台：<span id="d_ref"></span></h2>
+    <div id="d_status" style="margin-bottom:.8rem"></div>
+    <div class="grid">
+      <div>
+        <h2>金额与证据</h2>
+        <div id="d_amounts"></div>
+      </div>
+      <div>
+        <h2>期限与程序</h2>
+        <div id="d_procedure"></div>
+      </div>
+    </div>
+    <h3>陈述申辩记录</h3>
+    <div id="d_defenses"></div>
+    <h3>补交证据记录</h3>
+    <div id="d_evidence"></div>
+    <h3>听证记录</h3>
+    <div id="d_hearings"></div>
+
+    <h2 style="margin-top:1.2rem">办理操作</h2>
+    <div class="forms">
+      <form id="f_investigate">
+        <fieldset><legend>① 调查（inspector）</legend>
+          <label>调查方案</label><input id="i_plan" value="核对账簿">
+          <p><button>执行调查</button></p>
+        </fieldset>
+      </form>
+      <form id="f_propose">
+        <fieldset><legend>② 提出建议（inspector）</legend>
+          <label>处理建议</label><input id="p_proposal" value="补税并处罚">
+          <label>申辩截止日（第几天）</label><input id="p_defense" type="number" value="10">
+          <label>听证申请期限（第几天）</label><input id="p_hearing" type="number" value="15">
+          <p><button>形成建议</button></p>
+        </fieldset>
+      </form>
+      <form id="f_defend">
+        <fieldset><legend>③ 陈述申辩（纳税人代表）</legend>
+          <p class="muted">第几天提交，与申辩截止日比较；逾期只留记录不受理。</p>
+          <label>提交日（第几天）</label><input id="d_day" type="number" value="1">
+          <label>陈述申辩内容</label><input id="d_statement" value="">
+          <p><button>提交陈述</button></p>
+        </fieldset>
+      </form>
+      <form id="f_evidence">
+        <fieldset><legend>④ 补交证据（纳税人代表）</legend>
+          <p class="muted">多项用逗号分隔；受理后若改核定税额，金额自动重算。</p>
+          <label>提交日（第几天）</label><input id="e_day" type="number" value="1">
+          <label>证据清单（逗号分隔）</label><input id="e_items" value="">
+          <label>新的核定税额（可选，留空表示不变）</label><input id="e_assessed" type="number" value="">
+          <p><button>补交证据</button></p>
+        </fieldset>
+      </form>
+      <form id="f_hearing">
+        <fieldset><legend>⑤ 申请听证（纳税人代表）</legend>
+          <p class="muted">与听证申请期限比较；逾期只留记录不受理。</p>
+          <label>申请日（第几天）</label><input id="h_day" type="number" value="1">
+          <label>申请理由</label><input id="h_reason" value="">
+          <p><button>申请听证</button></p>
+        </fieldset>
+      </form>
+      <form id="f_conclude">
+        <fieldset><legend>⑥ 听证办结（inspector）</legend>
+          <p class="muted">听证未办结时复核不能确认决定。</p>
+          <label>听证结论</label><input id="ch_conclusion" value="">
+          <label>新的核定税额（可选）</label><input id="ch_assessed" type="number" value="">
+          <p><button>办结听证</button></p>
+        </fieldset>
+      </form>
+      <form id="f_review">
+        <fieldset><legend>⑦ 复核确认（reviewer）</legend>
+          <p class="muted">听证办结过或金额已变更时，必须填写决定依据。</p>
+          <label>复核结论</label>
+          <select id="r_outcome"><option value="accepted">accepted 维持</option><option value="reduced">reduced 调减</option><option value="remanded">remanded 退回</option></select>
+          <label>复核意见</label><input id="r_note" value="证据充分">
+          <label>决定依据（重新核对后填写）</label><input id="r_basis" value="">
+          <p><button>复核确认</button></p>
+        </fieldset>
+      </form>
+      <form id="f_appeal">
+        <fieldset><legend>⑧ 申请复议（纳税人代表）</legend>
+          <label>申请日（第几天）</label><input id="a_day" type="number" value="1">
+          <label>复议理由</label><input id="a_reason" value="">
+          <p><button>申请复议</button></p>
+        </fieldset>
+      </form>
+      <form id="f_close">
+        <fieldset><legend>⑨ 结案（reviewer）</legend>
+          <label>最终决定</label><input id="cl_decision" value="维持处理">
+          <p><button>结案</button></p>
+        </fieldset>
+      </form>
+    </div>
+
+    <h2 style="margin-top:1.2rem">审计时间线</h2>
+    <p><button id="load_audit" type="button" class="ghost">加载时间线</button></p>
+    <pre id="audit" style="display:none"></pre>
+  </section>
 </main>
 <script>
-const headers = {"X-User-Id":"demo-admin","X-Role":"admin","X-Org":"demo"};
-async function show(path) {
-  const response = await fetch(path, {headers});
-  const data = await response.json();
-  document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+const $ = (id) => document.getElementById(id);
+let current = null;
+let workbench = null;
+
+function cred() {
+  return {"X-User-Id": $("uid").value.trim() || "anonymous", "X-Role": $("role").value, "X-Org": $("org").value.trim()};
 }
-document.getElementById("load").onclick = () => show("/api/records?limit=20");
-document.getElementById("stats").onclick = () => show("/api/stats");
+async function api(path, options = {}) {
+  const response = await fetch(path, Object.assign({}, options, {headers: Object.assign({}, cred(), {"Content-Type": "application/json"})}));
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || ("请求失败 " + response.status));
+  return data;
+}
+function say(message, ok = true) {
+  const el = $("message");
+  el.textContent = message;
+  el.className = ok ? "ok" : "error";
+}
+async function run(fn) {
+  try { await fn(); } catch (error) { say(error.message, false); }
+}
+function esc(value) {
+  return String(value === null || value === undefined ? "" : value).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+}
+function fmt(value) {
+  return value === null || value === undefined ? "—" : Number(value).toLocaleString("zh-CN", {maximumFractionDigits: 2});
+}
+function val(id) { return $(id).value.trim(); }
+function num(id) { const text = val(id); return text === "" ? undefined : Number(text); }
+function badge(text, cls) { return `<span class="badge ${cls || ""}">${esc(text)}</span>`; }
+
+async function loadRecords() {
+  const data = await api("/api/records?limit=50");
+  if (!data.items.length) {
+    $("records").innerHTML = "<p class='muted'>暂无记录。</p>";
+    return;
+  }
+  const rows = data.items.map(r => `<tr data-id="${r.id}"><td>${r.id}</td><td>${esc(r.reference)}</td><td>${esc(r.payload.taxpayer || "")}</td><td>${esc(r.payload.tax_period || "")}</td><td>${badge(r.state, "info")}</td><td>v${r.version}</td></tr>`).join("");
+  $("records").innerHTML = `<table><tr><th>ID</th><th>编号</th><th>纳税人</th><th>税期</th><th>状态</th><th>版本</th></tr>${rows}</table>`;
+  document.querySelectorAll("tr[data-id]").forEach(tr => {
+    tr.onclick = () => run(() => selectRecord(Number(tr.dataset.id)));
+  });
+}
+
+async function selectRecord(id) {
+  current = await api("/api/records/" + id);
+  workbench = await api("/api/records/" + id + "/workbench");
+  renderDesk();
+  say("已加载案件 " + current.reference);
+}
+
+async function act(action, data) {
+  const updated = await api(`/api/records/${current.id}/actions/${action}`, {method: "POST", body: JSON.stringify({expected_version: current.version, data})});
+  current = updated;
+  workbench = await api("/api/records/" + current.id + "/workbench");
+  renderDesk();
+  await loadRecords();
+  say("操作成功：" + action);
+}
+
+function filingItems(items, render) {
+  if (!items.length) return "<p class='muted'>无</p>";
+  return "<ul class='plain'>" + items.map(item => "<li>" + render(item) + "</li>").join("") + "</ul>";
+}
+function acceptBadge(item) { return item.accepted ? badge("已受理", "ok") : badge("不予受理", "warn"); }
+function noteHtml(item) { return item.note ? ` <span class="muted">（${esc(item.note)}）</span>` : ""; }
+function hearingText(status) { return status === "open" ? "进行中（未办结）" : status === "concluded" ? "已办结" : "无听证"; }
+
+function renderDesk() {
+  $("desk").style.display = "block";
+  const p = current.payload;
+  const wb = workbench;
+  $("d_ref").textContent = `${current.reference}（${p.taxpayer || ""} / ${p.tax_period || ""}）`;
+
+  let status = badge("状态 " + current.state, "info") + badge("版本 v" + current.version);
+  status += wb.procedure_complete ? badge("程序已办完", "ok") : badge("程序未办完：" + wb.procedure_pending.join("、"), "warn");
+  if (current.state === "proposed") status += wb.review_ready ? badge("可以复核确认", "ok") : badge("暂不能确认原决定", "warn");
+  if (wb.amount_changed) status += badge("金额已变更", "warn");
+  $("d_status").innerHTML = status;
+
+  const am = wb.current_amounts || {};
+  let revisions = "";
+  if (wb.amount_revisions.length) {
+    revisions = "<h3>金额变更记录</h3><ul class='plain'>" + wb.amount_revisions.map(r =>
+      `<li>${r.source === "evidence" ? "补交证据" : "听证"}后核定 ${fmt(r.assessed_tax)}，应缴合计 ${fmt(r.total_due)}</li>`).join("") + "</ul>";
+  }
+  $("d_amounts").innerHTML = `<table>
+    <tr><th>补税差额</th><td>${fmt(am.tax_difference)}</td></tr>
+    <tr><th>滞纳金</th><td>${fmt(am.interest)}</td></tr>
+    <tr><th>处罚</th><td>${fmt(am.penalty)}</td></tr>
+    <tr><th>应缴合计</th><td>${fmt(am.total_due)}</td></tr>
+    <tr><th>建议形成时金额</th><td>${fmt(wb.proposed_amount)}</td></tr>
+    <tr><th>证据份数</th><td>${p.evidence_count ?? ""}</td></tr>
+  </table>${revisions}`;
+
+  let proc = "<ul class='plain'>";
+  proc += `<li>申辩截止日：${wb.defense_deadline_day != null ? "第" + wb.defense_deadline_day + "天" : "建议尚未形成"}</li>`;
+  proc += `<li>听证申请期限：${wb.hearing_deadline_day != null ? "第" + wb.hearing_deadline_day + "天" : "建议尚未形成"}</li>`;
+  proc += `<li>听证状态：${hearingText(wb.hearing_status)}</li>`;
+  if (wb.hearing_conclusion) proc += `<li>听证结论：${esc(wb.hearing_conclusion)}</li>`;
+  if (wb.decision_basis_required) proc += "<li>" + badge("复核须重新核对并填写决定依据", "warn") + "</li>";
+  if (wb.decision_basis) proc += `<li>已写入决定依据：${esc(wb.decision_basis)}</li>`;
+  proc += "</ul>";
+  $("d_procedure").innerHTML = proc;
+
+  $("d_defenses").innerHTML = filingItems(wb.defenses, d => `第${d.day}天：${esc(d.statement)} ${acceptBadge(d)}${noteHtml(d)}`);
+  $("d_evidence").innerHTML = filingItems(wb.evidence_submissions, e => `第${e.day}天：${e.items.map(esc).join("、")}${e.assessed_tax != null ? "，核定税额改为 " + fmt(e.assessed_tax) : ""} ${acceptBadge(e)}${noteHtml(e)}`);
+  $("d_hearings").innerHTML = filingItems(wb.hearing_requests, h => `第${h.day}天：${esc(h.reason)} ${acceptBadge(h)}${noteHtml(h)}`);
+}
+
+$("reload").onclick = () => run(loadRecords);
+$("create").onclick = () => run(async () => {
+  const data = {
+    taxpayer: val("c_taxpayer"), tax_period: val("c_tax_period"),
+    declared_tax: num("c_declared_tax"), assessed_tax: num("c_assessed_tax"),
+    penalty_rate: num("c_penalty_rate"), evidence_count: num("c_evidence_count"),
+    days_late: num("c_days_late"), appeal_deadline_day: num("c_appeal_deadline_day"),
+  };
+  const record = await api("/api/records", {method: "POST", body: JSON.stringify({reference: val("c_reference"), data})});
+  say("已创建 " + record.reference);
+  await loadRecords();
+});
+$("f_investigate").onsubmit = (e) => { e.preventDefault(); run(() => act("investigate", {plan: val("i_plan")})); };
+$("f_propose").onsubmit = (e) => { e.preventDefault(); run(() => act("propose", {proposal: val("p_proposal"), defense_deadline_day: num("p_defense"), hearing_deadline_day: num("p_hearing")})); };
+$("f_defend").onsubmit = (e) => { e.preventDefault(); run(() => act("defend", {defense_day: num("d_day"), statement: val("d_statement")})); };
+$("f_evidence").onsubmit = (e) => {
+  e.preventDefault();
+  run(() => {
+    const data = {evidence_day: num("e_day"), items: val("e_items").split(/[,，]/).map(s => s.trim()).filter(Boolean)};
+    if (num("e_assessed") !== undefined) data.assessed_tax = num("e_assessed");
+    return act("submit_evidence", data);
+  });
+};
+$("f_hearing").onsubmit = (e) => { e.preventDefault(); run(() => act("request_hearing", {request_day: num("h_day"), reason: val("h_reason")})); };
+$("f_conclude").onsubmit = (e) => {
+  e.preventDefault();
+  run(() => {
+    const data = {conclusion: val("ch_conclusion")};
+    if (num("ch_assessed") !== undefined) data.assessed_tax = num("ch_assessed");
+    return act("conclude_hearing", data);
+  });
+};
+$("f_review").onsubmit = (e) => {
+  e.preventDefault();
+  run(() => {
+    const data = {outcome: val("r_outcome"), review_note: val("r_note")};
+    if (val("r_basis")) data.decision_basis = val("r_basis");
+    return act("review", data);
+  });
+};
+$("f_appeal").onsubmit = (e) => { e.preventDefault(); run(() => act("appeal", {appeal_day: num("a_day"), appeal_reason: val("a_reason")})); };
+$("f_close").onsubmit = (e) => { e.preventDefault(); run(() => act("close", {final_decision: val("cl_decision")})); };
+$("load_audit").onclick = () => run(async () => {
+  if (!current) return;
+  const data = await api(`/api/records/${current.id}/audit`);
+  const el = $("audit");
+  el.style.display = "block";
+  el.textContent = data.items.map(e => `#${e.id} v${e.version} ${e.action} by ${e.actor_id} @ ${e.created_at}\n  ${JSON.stringify(e.details)}`).join("\n");
+});
+
+run(loadRecords);
 </script>
 </body>
 </html>

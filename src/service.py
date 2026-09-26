@@ -67,6 +67,12 @@ class Service:
         self._ensure_known_role(actor)
         return self.audit.timeline(record_id)
 
+    def workbench(self, actor: Actor, record_id: int) -> Dict[str, Any]:
+        actor = self._actor(actor)
+        self._ensure_known_role(actor)
+        record = self.repository.get(record_id)
+        return self.rules.workbench_status(record)
+
     def stats(self, actor: Actor) -> Dict[str, int]:
         actor = self._actor(actor)
         self._ensure_known_role(actor)
