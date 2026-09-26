@@ -2,16 +2,18 @@
 from typing import Any, Dict, List, Optional
 
 from .audit import AuditRecorder
-from .domain import Actor, PermissionDenied, text
+from .domain import Actor, Conflict, PermissionDenied, text
+from .procedure_rules import blocking_reasons
 from .repository import Repository
 from .rules import DomainRules
 
 
 class Service:
-    def __init__(self, repository: Repository, rules: DomainRules, audit: AuditRecorder = None) -> None:
+    def __init__(self, repository: Repository, rules: DomainRules, audit: AuditRecorder = None, procedures: Any = None) -> None:
         self.repository = repository
         self.rules = rules
         self.audit = audit or AuditRecorder(repository)
+        self.procedures = procedures
 
     @staticmethod
     def _actor(actor: Actor) -> Actor:
@@ -51,6 +53,10 @@ class Service:
             raise PermissionDenied("角色无权执行该操作")
         record = self.repository.get(record_id)
         self.rules.require_transition(record, action)
+        if action == "review" and self.procedures is not None:
+            reasons = blocking_reasons(record, self.procedures.list_for_record(record_id))
+            if reasons:
+                raise Conflict("；".join(reasons))
         new_state, new_payload, summary = self.rules.apply_action(record, action, data or {})
         return self.repository.mutate(
             record_id=record_id,

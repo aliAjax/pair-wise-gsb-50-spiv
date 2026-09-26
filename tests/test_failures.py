@@ -7,7 +7,7 @@ from src.domain import Actor, Conflict, PermissionDenied
 
 
 CREATE_DATA = {'taxpayer': 'Star Ltd', 'tax_period': '2025-Q4', 'declared_tax': 500000.0, 'assessed_tax': 760000.0, 'penalty_rate': 0.2, 'evidence_count': 4, 'days_late': 90, 'appeal_deadline_day': 60}
-FLOW = [('investigate', 'inspector', {'plan': '核对账簿'}, 'investigating'), ('propose', 'inspector', {'proposal': '补税并处罚'}, 'proposed'), ('review', 'reviewer', {'outcome': 'accepted', 'review_note': '证据充分'}, 'reviewed'), ('close', 'reviewer', {'final_decision': '维持处理'}, 'closed')]
+FLOW = [('investigate', 'inspector', {'plan': '核对账簿'}, 'investigating'), ('propose', 'inspector', {'proposal': '补税并处罚', 'defense_deadline_day': 15, 'hearing_request_deadline_day': 5}, 'proposed'), ('review', 'reviewer', {'outcome': 'accepted', 'review_note': '证据充分', 'decision_basis': '账簿与申报数据核对一致'}, 'reviewed'), ('close', 'reviewer', {'final_decision': '维持处理'}, 'closed')]
 
 
 class FailureTest(unittest.TestCase):

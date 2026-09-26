@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>程序办理台 - 税务稽查</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #17212b; }
+    main { max-width: 1080px; margin: auto; }
+    section { border: 1px solid #d8dee4; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    label { display: block; margin: .5rem 0 .2rem; font-size: .9rem; }
+    input, select, textarea { padding: .4rem; width: 100%; box-sizing: border-box; }
+    button { padding: .5rem .9rem; cursor: pointer; margin-top: .6rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: .6rem; }
+    th, td { border: 1px solid #d8dee4; padding: .4rem .6rem; text-align: left; font-size: .88rem; }
+    .badge { padding: .15rem .6rem; border-radius: 10px; font-size: .85rem; }
+    .ok { background: #dafbe1; }
+    .warn { background: #fff8c5; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+    pre { background: #f4f6f8; padding: 1rem; overflow: auto; border-radius: 8px; }
+    .hidden { display: none; }
+    hr { border: none; border-top: 1px solid #d8dee4; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>补税处罚程序办理台</h1>
+  <p><a href="/">返回演示页</a>。建议发出后，在此跟踪陈述申辩、补交证据和听证申请是否办完。</p>
+
+  <section>
+    <h2>身份与案件</h2>
+    <div class="grid">
+      <div>
+        <label>用户</label>
+        <input id="user" value="rep-01">
+      </div>
+      <div>
+        <label>角色</label>
+        <select id="role">
+          <option value="taxpayer_rep">taxpayer_rep 纳税人代表</option>
+          <option value="reviewer">reviewer 复核人员</option>
+          <option value="inspector">inspector 检查人员</option>
+          <option value="admin">admin 管理员</option>
+        </select>
+      </div>
+    </div>
+    <label>案件ID</label>
+    <input id="rid" type="number" value="1">
+    <button id="load">加载办理台</button>
+  </section>
+
+  <section id="overview" class="hidden">
+    <h2>案件与期限</h2>
+    <div id="ov"></div>
+  </section>
+
+  <section id="status" class="hidden">
+    <h2>程序状态</h2>
+    <div id="st"></div>
+  </section>
+
+  <section>
+    <h2>提交程序材料（纳税人代表）</h2>
+    <label>类型</label>
+    <select id="kind">
+      <option value="statement">陈述申辩</option>
+      <option value="evidence">补交证据</option>
+      <option value="hearing_request">听证申请</option>
+    </select>
+    <label>提交日（第几日）</label>
+    <input id="sday" type="number" value="1">
+    <label>内容</label>
+    <textarea id="content" rows="2"></textarea>
+    <div id="evfields" class="hidden">
+      <div class="grid">
+        <div><label>重新核定税额（可选）</label><input id="assessed" type="number" step="0.01"></div>
+        <div><label>滞纳天数（可选）</label><input id="days" type="number"></div>
+        <div><label>处罚比例（可选，0-1）</label><input id="rate" type="number" step="0.01"></div>
+        <div><label>新增证据份数（可选）</label><input id="addcnt" type="number"></div>
+      </div>
+    </div>
+    <button id="submit">提交</button>
+  </section>
+
+  <section>
+    <h2>复核人员操作</h2>
+    <label>听证结论</label>
+    <textarea id="hcontent" rows="2"></textarea>
+    <label>办结日（第几日）</label>
+    <input id="hday" type="number" value="1">
+    <button id="conclude">听证办结</button>
+    <hr>
+    <label>重新核对说明（新证据改变金额后填写）</label>
+    <textarea id="rechecknote" rows="2"></textarea>
+    <button id="recheck">重新核对金额</button>
+    <hr>
+    <label>复核结论</label>
+    <select id="outcome">
+      <option value="accepted">accepted 维持</option>
+      <option value="reduced">reduced 调减</option>
+      <option value="remanded">remanded 退回</option>
+    </select>
+    <label>复核意见</label>
+    <textarea id="reviewnote" rows="2"></textarea>
+    <label>决定依据（重新核对后写入）</label>
+    <textarea id="basis" rows="2"></textarea>
+    <button id="review">复核确认</button>
+  </section>
+
+  <section id="procs" class="hidden">
+    <h2>程序记录</h2>
+    <table>
+      <thead><tr><th>ID</th><th>类型</th><th>提交日</th><th>状态</th><th>说明</th><th>内容</th><th>提交人</th><th>时间</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+
+  <pre id="output">操作结果显示在这里。</pre>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const KIND_LABEL = {statement: "陈述申辩", evidence: "补交证据", hearing_request: "听证申请", hearing_conclusion: "听证结论"};
+const STATUS_LABEL = {accepted: "已受理", late_filed: "逾期不受理", concluded: "已办结"};
+const HEARING_LABEL = {none: "无听证", pending: "听证未办结", concluded: "听证已办结"};
+let desk = null;
+
+function headers() {
+  return {"Content-Type": "application/json", "X-User-Id": $("user").value, "X-Role": $("role").value};
+}
+async function api(path, opts) {
+  const response = await fetch(path, Object.assign({headers: headers()}, opts || {}));
+  const data = await response.json();
+  if (!response.ok) { throw new Error(data.message || ("HTTP " + response.status)); }
+  return data;
+}
+function show(data) { $("output").textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2); }
+
+async function load() {
+  try {
+    desk = await api("/api/records/" + $("rid").value + "/desk");
+    render();
+    show(desk);
+  } catch (e) { show("加载失败：" + e.message); }
+}
+
+function line(parent, key, value) {
+  const div = document.createElement("div");
+  const b = document.createElement("strong");
+  b.textContent = key + "：";
+  div.appendChild(b);
+  div.appendChild(document.createTextNode(value));
+  parent.appendChild(div);
+}
+
+function render() {
+  const rec = desk.record, p = rec.payload, dl = desk.deadlines || {};
+  ["overview", "status", "procs"].forEach(id => $(id).classList.remove("hidden"));
+  const ov = $("ov");
+  ov.textContent = "";
+  line(ov, "案件编号", rec.reference);
+  line(ov, "状态", rec.state);
+  line(ov, "纳税人", p.taxpayer || "-");
+  line(ov, "税期", p.tax_period || "-");
+  line(ov, "应补合计", p.total_due);
+  line(ov, "建议金额", p.proposed_amount !== undefined ? p.proposed_amount : "-");
+  line(ov, "申辩截止日", dl.defense_deadline_day != null ? "第" + dl.defense_deadline_day + "日" : "未设定");
+  line(ov, "听证申请期限", dl.hearing_request_deadline_day != null ? "第" + dl.hearing_request_deadline_day + "日" : "未设定");
+  line(ov, "待重新核对", desk.needs_recheck ? "是" : "否");
+  const st = $("st");
+  st.textContent = "";
+  const badge = document.createElement("span");
+  badge.className = "badge " + (desk.procedure_complete ? "ok" : "warn");
+  badge.textContent = desk.procedure_complete ? "程序已办结" : "程序未办结";
+  st.appendChild(badge);
+  st.appendChild(document.createTextNode("　听证状态：" + (HEARING_LABEL[desk.hearing.status] || desk.hearing.status)));
+  if (desk.blocking_reasons.length) {
+    const ul = document.createElement("ul");
+    desk.blocking_reasons.forEach(reason => {
+      const li = document.createElement("li");
+      li.textContent = reason;
+      ul.appendChild(li);
+    });
+    st.appendChild(ul);
+  }
+  const tbody = $("rows");
+  tbody.textContent = "";
+  desk.procedures.forEach(pr => {
+    const tr = document.createElement("tr");
+    [pr.id, KIND_LABEL[pr.kind] || pr.kind, "第" + pr.submitted_day + "日", STATUS_LABEL[pr.status] || pr.status, pr.note || "-", pr.content, pr.actor_id, pr.created_at].forEach(value => {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+$("kind").onchange = () => $("evfields").classList.toggle("hidden", $("kind").value !== "evidence");
+$("load").onclick = load;
+
+$("submit").onclick = async () => {
+  const kind = $("kind").value;
+  const data = {submitted_day: parseInt($("sday").value || "0", 10), content: $("content").value};
+  if (kind === "evidence") {
+    if ($("assessed").value !== "") data.assessed_tax = parseFloat($("assessed").value);
+    if ($("days").value !== "") data.days_late = parseInt($("days").value, 10);
+    if ($("rate").value !== "") data.penalty_rate = parseFloat($("rate").value);
+    if ($("addcnt").value !== "") data.additional_evidence_count = parseInt($("addcnt").value, 10);
+  }
+  try {
+    const result = await api("/api/records/" + $("rid").value + "/procedures", {method: "POST", body: JSON.stringify({kind, data})});
+    show(result);
+    await load();
+  } catch (e) { show("提交失败：" + e.message); }
+};
+
+$("conclude").onclick = async () => {
+  try {
+    const result = await api("/api/records/" + $("rid").value + "/procedures", {method: "POST", body: JSON.stringify({kind: "hearing_conclusion", data: {submitted_day: parseInt($("hday").value || "0", 10), content: $("hcontent").value}})});
+    show(result);
+    await load();
+  } catch (e) { show("办结失败：" + e.message); }
+};
+
+async function act(name, data) {
+  if (!desk) { show("请先加载办理台"); return; }
+  try {
+    const result = await api("/api/records/" + $("rid").value + "/actions/" + name, {method: "POST", body: JSON.stringify({expected_version: desk.record.version, data})});
+    show(result);
+    await load();
+  } catch (e) { show("操作失败：" + e.message); }
+}
+
+$("recheck").onclick = () => act("recheck", {recheck_note: $("rechecknote").value});
+$("review").onclick = () => act("review", {outcome: $("outcome").value, review_note: $("reviewnote").value, decision_basis: $("basis").value});
+</script>
+</body>
+</html>

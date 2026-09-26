@@ -6,8 +6,23 @@ from .domain import Actor, Conflict, ValidationError, boolean, choice, integer, 
 
 INITIAL_STATE = "opened"
 CREATE_ROLES = {'inspector'}
-ACTION_ROLES = {'investigate': {'inspector'}, 'propose': {'inspector'}, 'review': {'reviewer'}, 'appeal': {'taxpayer_rep'}, 'close': {'reviewer'}}
-TRANSITIONS = {'investigate': {'opened': 'investigating'}, 'propose': {'investigating': 'proposed'}, 'review': {'proposed': 'reviewed'}, 'appeal': {'reviewed': 'appealed'}, 'close': {'reviewed': 'closed', 'appealed': 'closed'}}
+ACTION_ROLES = {'investigate': {'inspector'}, 'propose': {'inspector'}, 'review': {'reviewer'}, 'recheck': {'reviewer'}, 'appeal': {'taxpayer_rep'}, 'close': {'reviewer'}}
+TRANSITIONS = {'investigate': {'opened': 'investigating'}, 'propose': {'investigating': 'proposed'}, 'review': {'proposed': 'reviewed'}, 'recheck': {'proposed': 'proposed'}, 'appeal': {'reviewed': 'appealed'}, 'close': {'reviewed': 'closed', 'appealed': 'closed'}}
+
+AMOUNT_KEYS = ("tax_difference", "interest", "penalty", "total_due", "refund_due")
+
+
+def compute_amounts(declared_tax: float, assessed_tax: float, penalty_rate: float, days_late: int) -> Dict[str, float]:
+    difference = max(0.0, float(assessed_tax) - float(declared_tax))
+    interest = difference * 0.0005 * int(days_late)
+    penalty = difference * float(penalty_rate)
+    return {
+        "tax_difference": round(difference, 2),
+        "interest": round(interest, 2),
+        "penalty": round(penalty, 2),
+        "total_due": round(difference + interest + penalty, 2),
+        "refund_due": round(max(0.0, float(declared_tax) - float(assessed_tax)), 2),
+    }
 
 
 class DomainRules:
@@ -39,14 +54,7 @@ class DomainRules:
 
     def prepare_create(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         p = self.validate_create(payload)
-        difference = max(0.0, float(p["assessed_tax"]) - float(p["declared_tax"]))
-        interest = difference * 0.0005 * int(p["days_late"])
-        penalty = difference * float(p["penalty_rate"])
-        p["tax_difference"] = round(difference, 2)
-        p["interest"] = round(interest, 2)
-        p["penalty"] = round(penalty, 2)
-        p["total_due"] = round(difference + interest + penalty, 2)
-        p["refund_due"] = round(max(0.0, float(p["declared_tax"]) - float(p["assessed_tax"])), 2)
+        p.update(compute_amounts(p["declared_tax"], p["assessed_tax"], p["penalty_rate"], p["days_late"]))
         return p
 
     def check_create_conflicts(self, payload: Dict[str, Any], existing: Iterable[Dict[str, Any]]) -> None:
@@ -73,15 +81,26 @@ class DomainRules:
             if int(p["evidence_count"]) <= 0:
                 raise ValidationError("没有证据不能提出处理建议")
             changes["proposal"] = text(data, "proposal")
+            changes["defense_deadline_day"] = integer(data, "defense_deadline_day", 1)
+            changes["hearing_request_deadline_day"] = integer(data, "hearing_request_deadline_day", 1)
             changes["proposed_amount"] = float(p["total_due"])
+            changes["needs_recheck"] = False
             summary = "已提出补税和处罚建议"
         elif action == "review":
             outcome = choice(data, "outcome", ["accepted", "reduced", "remanded"])
             changes["review_outcome"] = outcome
             changes["review_note"] = text(data, "review_note")
+            changes["decision_basis"] = text(data, "decision_basis")
             if outcome == "reduced":
                 changes["total_due"] = round(float(p["total_due"]) * float(data.get("reduction_pct", 0.5)), 2)
             summary = "复核完成"
+        elif action == "recheck":
+            if not p.get("needs_recheck"):
+                raise Conflict("当前没有需要重新核对的金额变动")
+            changes["recheck_note"] = text(data, "recheck_note")
+            changes["rechecked_total_due"] = float(p["total_due"])
+            changes["needs_recheck"] = False
+            summary = "复核人员已重新核对金额"
         elif action == "appeal":
             appeal_day = integer(data, "appeal_day", 0)
             if appeal_day > int(p["appeal_deadline_day"]):

@@ -74,6 +74,18 @@ def integer(data: Dict[str, Any], key: str, minimum: int = None, maximum: int = 
     return value
 
 
+def optional_number(data: Dict[str, Any], key: str, minimum: float = None, maximum: float = None):
+    if data.get(key) is None:
+        return None
+    return number(data, key, minimum, maximum)
+
+
+def optional_integer(data: Dict[str, Any], key: str, minimum: int = None, maximum: int = None):
+    if data.get(key) is None:
+        return None
+    return integer(data, key, minimum, maximum)
+
+
 def choice(data: Dict[str, Any], key: str, allowed: List[str]) -> str:
     value = text(data, key)
     if value not in allowed:

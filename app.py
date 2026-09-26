@@ -4,6 +4,8 @@ from pathlib import Path
 
 from src.audit import AuditRecorder
 from src.http_api import create_server
+from src.procedure_repository import ProcedureRepository
+from src.procedure_service import ProcedureService
 from src.repository import Repository
 from src.rules import DomainRules
 from src.service import Service
@@ -14,10 +16,19 @@ DEFAULT_DB = BASE_DIR / "tax-audit.db"
 DEFAULT_PORT = 8326
 
 
-def build_service(db_path: str) -> Service:
+def build_services(db_path: str):
     repository = Repository(db_path)
+    procedures = ProcedureRepository(db_path)
     audit = AuditRecorder(repository)
-    return Service(repository, DomainRules(), audit)
+    rules = DomainRules()
+    service = Service(repository, rules, audit, procedures)
+    desk = ProcedureService(repository, procedures, rules, audit)
+    return service, desk
+
+
+def build_service(db_path: str) -> Service:
+    service, _ = build_services(db_path)
+    return service
 
 
 def parse_args():
@@ -31,8 +42,8 @@ def parse_args():
 def main() -> None:
     args = parse_args()
     Path(args.db).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
-    service = build_service(args.db)
-    server = create_server(args.host, args.port, service, BASE_DIR / "static")
+    service, desk = build_services(args.db)
+    server = create_server(args.host, args.port, service, BASE_DIR / "static", desk)
     print("税务稽查案件与复议流程 listening on http://%s:%s" % (args.host, args.port), flush=True)
     try:
         server.serve_forever()
